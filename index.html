@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IPA国際音声記号スペースドリビュー</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .fade-in { animation: fadeIn 0.25s ease forwards; }
+  .opt-btn { transition: background 0.15s, transform 0.1s; }
+  .opt-btn:active { transform: scale(0.97); }
+  .bar-fill { transition: width 0.5s ease; }
+</style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col">
+
+<header class="bg-slate-800 shadow px-4 py-3 flex items-center justify-between">
+  <h1 class="text-lg font-bold">🔤 IPA スペースドリビュー</h1>
+  <div class="flex gap-2 text-xs">
+    <span id="hdr-due" class="bg-blue-700 px-2 py-1 rounded">予定: 0</span>
+    <span id="hdr-mastered" class="bg-green-700 px-2 py-1 rounded">習得: 0</span>
+  </div>
+</header>
+
+<main class="flex-1 flex flex-col items-center px-4 py-6 gap-5 max-w-xl mx-auto w-full">
+
+  <!-- Filter -->
+  <div class="w-full flex gap-2 justify-center flex-wrap">
+    <button class="filter-btn px-4 py-2 rounded text-sm font-semibold bg-indigo-600" onclick="setFilter('all')" id="f-all" aria-label="全記号を表示">全て</button>
+    <button class="filter-btn px-4 py-2 rounded text-sm font-semibold bg-slate-700" onclick="setFilter('vowel')" id="f-vowel" aria-label="母音のみ">母音のみ</button>
+    <button class="filter-btn px-4 py-2 rounded text-sm font-semibold bg-slate-700" onclick="setFilter('consonant')" id="f-consonant" aria-label="子音のみ">子音のみ</button>
+    <button onclick="startReview()" class="px-4 py-2 rounded text-sm font-semibold bg-orange-500 hover:bg-orange-400 transition" aria-label="復習開始">▶ 復習開始</button>
+  </div>
+
+  <!-- Quiz card -->
+  <div id="quiz-area" class="w-full">
+    <div id="symbol-card" class="fade-in bg-gradient-to-br from-indigo-700 to-violet-800 rounded-2xl shadow-xl p-8 text-center mb-4">
+      <div id="symbol-display" class="text-7xl font-bold mb-2 tracking-wide" aria-live="polite">-</div>
+      <div id="symbol-kata" class="text-xl text-indigo-200"></div>
+    </div>
+    <div id="options-grid" class="grid grid-cols-2 gap-3"></div>
+    <div id="feedback-box" class="hidden mt-4 p-4 rounded-xl text-center font-bold text-lg" role="alert"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="w-full">
+    <div class="flex justify-between text-sm text-slate-400 mb-2">
+      <span>正解率グラフ（全記号）</span>
+      <button onclick="toggleChart()" class="text-xs text-blue-400 hover:text-blue-300" aria-label="グラフ表示切替">切替</button>
+    </div>
+    <div id="chart-area" class="w-full bg-slate-800 rounded-xl p-4 overflow-y-auto max-h-72">
+      <div id="chart-bars"></div>
+    </div>
+  </div>
+
+  <!-- Reference collapsible -->
+  <details class="w-full bg-slate-800 rounded-xl overflow-hidden">
+    <summary class="cursor-pointer px-4 py-3 font-semibold text-slate-300 hover:text-white select-none" aria-label="記号一覧表を開閉">📋 記号一覧表（カタカナ対応）</summary>
+    <div class="px-4 pb-4 overflow-x-auto">
+      <table class="w-full text-xs mt-2 border-collapse">
+        <thead><tr class="text-slate-400 border-b border-slate-600">
+          <th class="py-1 text-left">IPA</th>
+          <th class="py-1 text-left">カタカナ</th>
+          <th class="py-1 text-left">例</th>
+          <th class="py-1 text-left">説明</th>
+        </tr></thead>
+        <tbody id="ref-body"></tbody>
+      </table>
+    </div>
+  </details>
+
+</main>
+
+<script>
+const SYMBOLS = [
+  // 母音
+  {sym:'i',  kata:'イ',  ex:'see',    type:'vowel',    desc:'高前舌非円唇母音'},
+  {sym:'e',  kata:'エ',  ex:'bed',    type:'vowel',    desc:'中前舌非円唇母音'},
+  {sym:'æ',  kata:'ア寄りエ', ex:'cat', type:'vowel',  desc:'低前舌非円唇母音'},
+  {sym:'ɑ',  kata:'アー', ex:'father', type:'vowel',   desc:'低後舌非円唇母音'},
+  {sym:'ɔ',  kata:'オー', ex:'thought',type:'vowel',   desc:'低後舌円唇母音'},
+  {sym:'u',  kata:'ウ',  ex:'moon',   type:'vowel',    desc:'高後舌円唇母音'},
+  {sym:'ʊ',  kata:'ウ（短）', ex:'book', type:'vowel', desc:'高後舌円唇母音（弛緩）'},
+  {sym:'ɛ',  kata:'エ（開）', ex:'bet',  type:'vowel', desc:'中低前舌非円唇母音'},
+  {sym:'ə',  kata:'ア（弱）', ex:'sofa', type:'vowel', desc:'中央母音（シュワー）'},
+  {sym:'ɪ',  kata:'イ（短）', ex:'bit',  type:'vowel', desc:'高前舌非円唇母音（弛緩）'},
+  {sym:'ʌ',  kata:'ア',  ex:'cup',    type:'vowel',    desc:'中後舌非円唇母音'},
+  {sym:'y',  kata:'ユ',  ex:'lune',   type:'vowel',    desc:'高前舌円唇母音'},
+  {sym:'ø',  kata:'ウ寄りエ',ex:'peu', type:'vowel',  desc:'中前舌円唇母音'},
+  {sym:'œ',  kata:'ウ寄りエ（開）',ex:'peur',type:'vowel', desc:'中低前舌円唇母音'},
+  {sym:'ɯ',  kata:'ウ（無唇）',ex:'うー',type:'vowel', desc:'高後舌非円唇母音'},
+  // 子音
+  {sym:'p',  kata:'パ行',ex:'pen',    type:'consonant', desc:'無声両唇破裂音'},
+  {sym:'b',  kata:'バ行',ex:'bed',    type:'consonant', desc:'有声両唇破裂音'},
+  {sym:'t',  kata:'タ行',ex:'top',    type:'consonant', desc:'無声歯茎破裂音'},
+  {sym:'d',  kata:'ダ行',ex:'dog',    type:'consonant', desc:'有声歯茎破裂音'},
+  {sym:'k',  kata:'カ行',ex:'cat',    type:'consonant', desc:'無声軟口蓋破裂音'},
+  {sym:'g',  kata:'ガ行',ex:'go',     type:'consonant', desc:'有声軟口蓋破裂音'},
+  {sym:'f',  kata:'ファ行',ex:'fan',  type:'consonant', desc:'無声唇歯摩擦音'},
+  {sym:'v',  kata:'ヴァ行',ex:'van',  type:'consonant', desc:'有声唇歯摩擦音'},
+  {sym:'θ',  kata:'シ（歯)',ex:'think',type:'consonant', desc:'無声歯間摩擦音'},
+  {sym:'ð',  kata:'ジ（歯)',ex:'this', type:'consonant', desc:'有声歯間摩擦音'},
+  {sym:'s',  kata:'サ行',ex:'sun',    type:'consonant', desc:'無声歯茎摩擦音'},
+  {sym:'z',  kata:'ザ行',ex:'zoo',    type:'consonant', desc:'有声歯茎摩擦音'},
+  {sym:'ʃ',  kata:'シャ行',ex:'ship', type:'consonant', desc:'無声後部歯茎摩擦音'},
+  {sym:'ʒ',  kata:'ジャ行',ex:'vision',type:'consonant',desc:'有声後部歯茎摩擦音'},
+  {sym:'tʃ', kata:'チャ行',ex:'chair',type:'consonant', desc:'無声後部歯茎破擦音'},
+  {sym:'dʒ', kata:'ジャ行',ex:'jump', type:'consonant', desc:'有声後部歯茎破擦音'},
+  {sym:'m',  kata:'マ行',ex:'man',    type:'consonant', desc:'両唇鼻音'},
+  {sym:'n',  kata:'ナ行',ex:'no',     type:'consonant', desc:'歯茎鼻音'},
+  {sym:'ŋ',  kata:'ング',ex:'sing',   type:'consonant', desc:'軟口蓋鼻音'},
+  {sym:'l',  kata:'ラ行',ex:'let',    type:'consonant', desc:'歯茎側面接近音'},
+  {sym:'r',  kata:'ル（英）',ex:'red', type:'consonant', desc:'後部歯茎接近音'},
+  {sym:'w',  kata:'ワ行',ex:'wet',    type:'consonant', desc:'両唇軟口蓋接近音'},
+  {sym:'j',  kata:'ヤ行',ex:'yes',    type:'consonant', desc:'硬口蓋接近音'},
+  {sym:'h',  kata:'ハ行',ex:'hat',    type:'consonant', desc:'声門摩擦音'},
+  {sym:'ʔ',  kata:'（声門閉鎖）',ex:'uh-oh',type:'consonant',desc:'声門破裂音'},
+];
+
+const STORAGE_KEY='ipa_sr_v1';
+let filter='all';
+let progress={};
+let currentIdx=-1;
+let optionIdxs=[];
+let answered=false;
+let queue=[];
+
+function loadProgress(){
+  const d=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');
+  progress=d;
+}
+function saveProgress(){
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(progress));
+}
+function getP(sym){
+  if(!progress[sym]) progress[sym]={correct:0,incorrect:0,interval:1,due:0};
+  return progress[sym];
+}
+
+function filteredSymbols(){
+  if(filter==='vowel') return SYMBOLS.filter(s=>s.type==='vowel');
+  if(filter==='consonant') return SYMBOLS.filter(s=>s.type==='consonant');
+  return SYMBOLS;
+}
+
+function setFilter(f){
+  filter=f;
+  ['all','vowel','consonant'].forEach(x=>{
+    document.getElementById('f-'+x).className='filter-btn px-4 py-2 rounded text-sm font-semibold '+(x===f?'bg-indigo-600':'bg-slate-700');
+  });
+  buildChart();
+  updateHdr();
+}
+
+function updateHdr(){
+  const syms=filteredSymbols();
+  const now=Date.now();
+  const due=syms.filter(s=>{const p=getP(s.sym);return p.due<=now;}).length;
+  const mastered=syms.filter(s=>{const p=getP(s.sym);return p.correct>=5&&p.correct>p.incorrect*2;}).length;
+  document.getElementById('hdr-due').textContent='予定: '+due;
+  document.getElementById('hdr-mastered').textContent='習得: '+mastered;
+}
+
+function buildDueQueue(){
+  const syms=filteredSymbols();
+  const now=Date.now();
+  const due=syms.filter(s=>getP(s.sym).due<=now);
+  // shuffle
+  for(let i=due.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[due[i],due[j]]=[due[j],due[i]];}
+  return due;
+}
+
+function startReview(){
+  queue=buildDueQueue();
+  if(queue.length===0){
+    // all reviewed — pick ones with lowest interval
+    const syms=filteredSymbols();
+    queue=[...syms].sort((a,b)=>getP(a.sym).interval-getP(b.sym).interval).slice(0,10);
+  }
+  nextCard();
+}
+
+function nextCard(){
+  answered=false;
+  if(queue.length===0){
+    queue=buildDueQueue();
+    if(queue.length===0){
+      document.getElementById('symbol-display').textContent='✅';
+      document.getElementById('symbol-kata').textContent='本日の復習完了！';
+      document.getElementById('options-grid').innerHTML='';
+      document.getElementById('feedback-box').classList.add('hidden');
+      return;
+    }
+  }
+  const item=queue.shift();
+  currentIdx=SYMBOLS.indexOf(item);
+  const symData=SYMBOLS[currentIdx];
+  document.getElementById('symbol-display').textContent='['+symData.sym+']';
+  document.getElementById('symbol-kata').textContent=symData.kata;
+  document.getElementById('feedback-box').classList.add('hidden');
+
+  // Build options
+  const all=filteredSymbols();
+  const others=all.filter((_,i)=>SYMBOLS.indexOf(_)!==currentIdx);
+  for(let i=others.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[others[i],others[j]]=[others[j],others[i]];}
+  const opts=[symData,...others.slice(0,3)];
+  for(let i=opts.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[opts[i],opts[j]]=[opts[j],opts[i]];}
+
+  const grid=document.getElementById('options-grid');
+  grid.innerHTML='';
+  opts.forEach((opt,oi)=>{
+    const btn=document.createElement('button');
+    btn.className='opt-btn bg-slate-700 hover:bg-slate-600 rounded-xl p-3 text-sm text-left transition';
+    btn.setAttribute('aria-label','選択肢: '+opt.desc);
+    btn.innerHTML=`<span class="font-bold text-indigo-300">[${opt.sym /* xss-ok: SYMBOLSハードコード配列のsym */}]</span><br/><span class="text-xs text-slate-300">${opt.desc /* xss-ok: SYMBOLSハードコード配列のdesc */}</span>`;
+    btn.onclick=()=>selectOption(opt.sym===symData.sym, btn, symData);
+    grid.appendChild(btn);
+  });
+
+  document.getElementById('symbol-card').className='fade-in bg-gradient-to-br from-indigo-700 to-violet-800 rounded-2xl shadow-xl p-8 text-center mb-4';
+}
+
+function selectOption(isCorrect, btn, symData){
+  if(answered)return;
+  answered=true;
+  const p=getP(symData.sym);
+  const fb=document.getElementById('feedback-box');
+  fb.classList.remove('hidden');
+
+  if(isCorrect){
+    p.correct++;
+    p.interval=Math.min(p.interval*2,30);
+    p.due=Date.now()+p.interval*24*3600*1000;
+    btn.className='opt-btn bg-green-700 rounded-xl p-3 text-sm text-left';
+    fb.className='mt-4 p-4 rounded-xl text-center font-bold text-lg bg-green-800 text-green-200';
+    fb.innerHTML=`⭕ 正解！<br/><span class="text-sm font-normal">例: ${symData.ex /* xss-ok: SYMBOLSハードコード配列のex */} / ${symData.desc /* xss-ok: SYMBOLSハードコード配列のdesc */}</span>`;
+  } else {
+    p.incorrect++;
+    p.interval=1;
+    p.due=Date.now()+3600*1000;
+    btn.className='opt-btn bg-red-800 rounded-xl p-3 text-sm text-left';
+    fb.className='mt-4 p-4 rounded-xl text-center font-bold text-lg bg-red-900 text-red-200';
+    fb.innerHTML=`❌ 不正解。正解: ${symData.desc /* xss-ok: SYMBOLSハードコード配列のdesc */}<br/><span class="text-sm font-normal">例: ${symData.ex /* xss-ok: SYMBOLSハードコード配列のex */}</span>`;
+    // highlight correct
+    document.querySelectorAll('#options-grid button').forEach(b=>{
+      if(b.querySelector('span')&&b.querySelector('span').textContent.includes(symData.sym)){
+        b.className='opt-btn bg-green-800 rounded-xl p-3 text-sm text-left';
+      }
+    });
+  }
+  saveProgress();
+  buildChart();
+  updateHdr();
+  setTimeout(nextCard, 1800);
+}
+
+function buildChart(){
+  const syms=filteredSymbols();
+  const bars=document.getElementById('chart-bars');
+  bars.innerHTML='';
+  syms.forEach(s=>{
+    const p=getP(s.sym);
+    const total=p.correct+p.incorrect;
+    const pct=total===0?0:Math.round((p.correct/total)*100);
+    const color=pct>=80?'bg-green-500':pct>=50?'bg-yellow-500':'bg-red-500';
+    bars.innerHTML+=`<div class="flex items-center gap-2 mb-1">
+      <span class="text-xs font-mono w-8 text-right text-indigo-300">[${s.sym /* xss-ok: SYMBOLSハードコード配列のsym */}]</span>
+      <div class="flex-1 bg-slate-700 rounded-full h-3">
+        <div class="${color /* xss-ok: ハードコードif-elseから選択したCSSクラス */} bar-fill h-3 rounded-full" style="width:${pct /* xss-ok: 整数パーセント計算値 */}%"></div>
+      </div>
+      <span class="text-xs w-10 text-right text-slate-400">${pct /* xss-ok: 整数パーセント計算値 */}%</span>
+    </div>`;
+  });
+}
+
+function toggleChart(){
+  const ca=document.getElementById('chart-area');
+  ca.classList.toggle('hidden');
+}
+
+// Build ref table
+(function(){
+  const tb=document.getElementById('ref-body');
+  SYMBOLS.forEach(s=>{
+    tb.innerHTML+=`<tr class="border-b border-slate-700">
+      <td class="py-1 font-mono text-indigo-300 pr-2">[${s.sym /* xss-ok: SYMBOLSハードコード配列のsym */}]</td>
+      <td class="py-1 text-yellow-200 pr-2">${s.kata /* xss-ok: SYMBOLSハードコード配列のkata */}</td>
+      <td class="py-1 text-slate-300 pr-2 italic">${s.ex /* xss-ok: SYMBOLSハードコード配列のex */}</td>
+      <td class="py-1 text-slate-400">${s.desc /* xss-ok: SYMBOLSハードコード配列のdesc */}</td>
+    </tr>`;
+  });
+})();
+
+loadProgress();
+buildChart();
+updateHdr();
+startReview();
+</script>
+</body>
+</html>
